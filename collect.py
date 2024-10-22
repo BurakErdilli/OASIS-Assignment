@@ -105,162 +105,127 @@ neuro_data['participant_id'] = neuro_data['participant_id'].str.replace(
 combined_data = neuro_data.merge(
     roi_volumes_df, left_on='participant_id', right_index=True, how='inner')
 
-print(combined_data)
-
-# Combine with neuropsychological data
-combined_data = neuro_data.merge(
-    roi_volumes_df, left_on='participant_id', right_index=True, how='inner')
-print(combined_data)
 
 # Save the combined data to a new CSV file using relative path
 combined_data.to_csv(os.path.join(
     script_dir, 'combined_patient_data.csv'), index=False)
 
-# Select the last three columns
-last_three_columns = combined_data.columns[-49:]
 
-# Calculate standard deviation for each of the last three columns
-std_devs = combined_data[last_three_columns].std()
-top_std_columns = std_devs.nlargest(3).index.tolist()
+roi_volume_columns = roi_volumes_df.columns.tolist()  # Get the ROI volume columns
+roi_volumes_to_store = combined_data[["participant_id"] + roi_volume_columns]
 
 
-# Updated list1 excluding 'laterality'
+# Define the list of attributes for correlation
 list1 = ['sex', 'education_level', 'age_bl', 'cdr',
          'diagnosis_bl', 'MMS', 'cdr_global', 'diagnosis']
-list2 = top_std_columns
-# Create a DataFrame for correlations between list1 and list2 columns
-correlation_results = pd.DataFrame(index=list1, columns=list2)
 
+# Ensure that the combined data contains all attributes in list1
+for attribute in list1:
+    if attribute not in combined_data.columns:
+        print(f"Warning: {attribute} not found in combined_data.")
 
-# Sort the columns by standard deviation and get the top 3
+# Select the relevant columns from the combined data, excluding participant_id
+correlation_data = combined_data[roi_volume_columns + list1]
 
+# Convert any non-numeric data to numeric (e.g., encoding categorical variables if necessary)
+correlation_data_encoded = pd.get_dummies(correlation_data, drop_first=True)
 
-# Add total_volume to list2
+# Calculate the correlation matrix
+correlation_matrix = correlation_data_encoded.corr()
 
-# Convert categorical variables in list1 to numeric
-for col in list1:
-    if col in combined_data.columns:
-        combined_data[col], _ = pd.factorize(combined_data[col])
+# Select only the relevant correlation values for the ROI volumes
+correlation_matrix_roi = correlation_matrix.loc[roi_volume_columns,
+                                                correlation_data_encoded.columns.difference(roi_volume_columns)]
 
-# Create a grid of scatter plots
-num_rows = len(list1)
-num_cols = len(list2)
+# Print the shape of the correlation matrix
+print(f"Correlation matrix shape: {correlation_matrix_roi.shape}")
 
-# Adjust axes handling for single column
-fig, axes = plt.subplots(num_rows, num_cols, figsize=(
-    15, 4 * num_rows), sharex=True, sharey=True)
+# Visualize the correlation matrix using seaborn
+plt.figure(figsize=(12, 8))
+sns.heatmap(
+    correlation_matrix_roi,
+    annot=False,  # Disable annotations
+    cmap='coolwarm',
+    square=True,
+    linewidths=0.5,  # Add linewidth between cells
+    linecolor='white'  # Color of the lines between cells
+)
+plt.title('Correlation Matrix ROI Volumes - Attributes', fontsize=16)
+plt.tight_layout()  # Adjust layout to make room for the title
+plt.show()
 
-if num_cols == 1:  # If only one column, axes will be 1D
-    axes = np.atleast_2d(axes).T  # Convert to 2D array to avoid index issues
+# Set the figure size for the plots
+# Adjust height based on the number of ROIs
+plt.figure(figsize=(15, len(roi_volume_columns) * 5))
 
-# Plotting each combination
-for i, col1 in enumerate(list1):
-    if col1 in combined_data.columns:
-        for j, col2 in enumerate(list2):
-            if col2 in combined_data.columns:
-                ax = axes[i, j] if num_cols > 1 else axes[i, 0]
-                ax.scatter(combined_data[col1], combined_data[col2], alpha=0.6)
-                ax.set_title(f'{col1} vs {col2}')
-                ax.set_xlabel(col1)
-                ax.set_ylabel(col2)
+# Loop through each ROI column to create scatter plots
+for i, roi in enumerate(roi_volume_columns):
+    # Create a subplot for each ROI
+    plt.subplot(len(roi_volume_columns), 1, i + 1)
+    plt.scatter(combined_data[roi], combined_data['MMS'], alpha=0.6)
 
-                # Calculate and display the correlation coefficient
-                clean_data = combined_data[[col1, col2]].dropna()
-                if clean_data[col1].nunique() > 1 and clean_data[col2].nunique() > 1:
-                    corr, _ = pearsonr(clean_data[col1], clean_data[col2])
-                    ax.text(
-                        0.05, 0.95, f'Corr: {corr:.2f}', transform=ax.transAxes, fontsize=10, verticalalignment='top')
+    # Fit a regression line (optional)
+    sns.regplot(x=combined_data[roi], y=combined_data['MMS'],
+                scatter=False, color='red', ax=plt.gca())
 
+    plt.title(f'Correlation between {roi} Volume and MMS Score')
+    plt.xlabel(f'{roi} Volume (in mm³)')
+    plt.ylabel('MMS Score')
+    plt.grid(True)
 
-# Proceed with the correlation and plotting as before
-# Create a DataFrame for correlations between list1 and list2 columns
-correlation_results = pd.DataFrame(index=list1, columns=list2)
+plt.tight_layout()  # Adjust layout to avoid overlap
+plt.show()
 
-# Calculate correlation between list1 and list2
-for col1 in list1:
-    for col2 in list2:
-        clean_data = combined_data[[col1, col2]].dropna()
-        if clean_data[col1].nunique() > 1 and clean_data[col2].nunique() > 1:
-            corr, _ = pearsonr(clean_data[col1], clean_data[col2])
-            correlation_results.at[col1, col2] = corr
-        else:
-            # Set to NaN if correlation can't be calculated
-            correlation_results.at[col1, col2] = np.nan
+# Set the figure size for the plot
+plt.figure(figsize=(10, 6))
 
-# Plotting the correlation matrix between list1 and list2
-plt.figure(figsize=(10, 8))
-plt.title(
-    'Correlation Matrix between List1 and Total Volume + Top 3 Columns by Std Dev')
-sns.heatmap(correlation_results.astype(float), annot=True,
-            cmap='coolwarm', fmt=".2f", linewidths=0.5)
-plt.xticks(rotation=90)
+# Create a scatter plot with colors based on sex
+sns.scatterplot(data=combined_data, x='total_volume',
+                y='MMS', hue='sex', style='sex', alpha=0.7)
+
+# Add labels and title
+plt.title('Distribution of MMS Scores by Total Volume')
+plt.xlabel('Total Volume (in mm³)')
+plt.ylabel('MMS Score')
+plt.grid(True)
+
+# Display the legend
+plt.legend(title='Sex')
+
+# Show the plot
 plt.tight_layout()
 plt.show()
 
+# Calculate the correlation of each ROI with the MMS score
+correlation_with_mms = correlation_matrix_roi['MMS'].abs(
+).sort_values(ascending=False)
 
-# Create a PDF file path
-pdf_path = r"C:\spyder_files\combined_patient_data.pdf"  # Change the path as needed
+# Get the top 3 most correlated ROIs
+top_3_rois = correlation_with_mms.index[1:4]  # Exclude the MMS itself
 
-# Create a new figure with a larger size for better readability
-plt.figure(figsize=(16, 10))
-plt.axis('tight')
-plt.axis('off')
+# Print the top 3 correlations
+print("Top 3 ROIs correlated with MMS:")
+for roi in top_3_rois:
+    correlation_value = correlation_with_mms[roi]
+    print(f"{roi}: {correlation_value:.2f}")
 
-# Create a table from the DataFrame
-table_data = combined_data.values
-columns = combined_data.columns
+# Set up the figure size for the plots
+plt.figure(figsize=(15, 5))
 
-# Create the table and add it to the figure
-table = plt.table(cellText=table_data, colLabels=columns,
-                  cellLoc='center', loc='center')
+# Loop through each of the top 3 ROIs to create scatter plots
+for i, roi in enumerate(top_3_rois):
+    plt.subplot(1, 3, i + 1)  # Create a subplot for each ROI
+    plt.scatter(combined_data[roi], combined_data['MMS'], alpha=0.7)
 
-# Adjust font size and properties for better readability
-table.auto_set_font_size(False)
-table.set_fontsize(12)
-table.scale(1.5, 1.5)  # Increase the scale for larger cells
+    # Fit a regression line (optional)
+    sns.regplot(x=combined_data[roi], y=combined_data['MMS'],
+                scatter=False, color='red', ax=plt.gca())
 
-# Manually adjust column widths for readability
-for i in range(len(columns)):
-    table.auto_set_column_width(i)
+    # Add labels and title
+    plt.title(f'Correlation: #ROI {roi} Volume - MMS Score')
+    plt.xlabel(f'#ROI {roi} Volume (in mm³)')
+    plt.ylabel('MMS Score')
+    plt.grid(True)
 
-# Save the figure as a PDF
-with PdfPages(pdf_path) as pdf:
-    pdf.savefig()
-    plt.close()
-
-print(f"Combined data has been exported as a readable PDF table to {pdf_path}")
-
-
-def print_tree(startpath, level=0, max_length=30, max_items=6):
-    """Print the directory tree starting from the given path, with limits on item length and count."""
-    # Print the current directory, truncating long names
-    dir_name = os.path.basename(startpath)
-    if len(dir_name) > max_length:
-        dir_name = dir_name[:max_length] + '...'
-    print('    ' * level + dir_name + '/')
-
-    # Iterate over the contents of the directory
-    try:
-        items = sorted(os.listdir(startpath))  # Get all items in the directory
-        for index, item in enumerate(items):
-            if index >= max_items:
-                # Indicate more items exist
-                print('    ' * (level + 1) + '...')
-                break
-
-            item_path = os.path.join(startpath, item)
-            # Truncate file names for display
-            if len(item) > max_length:
-                item = item[:max_length] + '...'
-
-            if os.path.isdir(item_path):
-                # Recursive call for directories
-                print_tree(item_path, level + 1, max_length, max_items)
-            else:
-                print('    ' * (level + 1) + item)  # Print files
-    except PermissionError:
-        print('    ' * level + 'Permission Denied')
-
-
-base_path = r'C:\spyder_files\versionOne'
-print_tree(base_path)
+plt.tight_layout()  # Adjust layout to avoid overlap
+plt.show()
