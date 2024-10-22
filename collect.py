@@ -174,6 +174,11 @@ for i, roi in enumerate(roi_volume_columns):
     plt.grid(True)
 
 plt.tight_layout()  # Adjust layout to avoid overlap
+# Save the figure as a PDF
+plt.tight_layout()
+plt.savefig(os.path.join(
+    script_dir, 'Correlation_Between_Total_Volume_and_MMS_Scores.pdf'), format='pdf')
+
 plt.show()
 
 # Set the figure size for the plot
